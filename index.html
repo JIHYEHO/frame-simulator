@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>액자 시뮬레이터 v10.1 (안정화)</title>
+    <title>액자 시뮬레이터 v11.0</title>
     <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@700&family=Noto+Serif+KR:wght@700&family=Nanum+Brush+Script&family=Nanum+Gothic+Coding:wght@700&display=swap" rel="stylesheet">
     <style>
@@ -24,15 +24,15 @@
         .btn-group { margin-top: auto; display: flex; flex-direction: column; gap: 8px; border-top: 2px solid #eee; padding-top: 15px; }
         .btn { width: 100%; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: bold; border: none; font-size: 14px; }
         .btn-blue { background: #4A90E2; color: white; }
-        .btn-green { background: #27ae60; color: white; opacity: 0.5; }
+        .btn-green { background: #27ae60; color: white; }
         #status { font-size: 10px; font-weight: bold; margin-bottom: 5px; color: #e67e22; background: #fff3e0; padding: 5px; border-radius: 4px; text-align: center;}
     </style>
 </head>
 <body>
 
 <div class="controls">
-    <h3>🖼️ 시뮬레이터 v10.1</h3>
-    <div id="status">⌛ 폰트 엔진 로딩 중...</div>
+    <h3>🖼️ 시뮬레이터 v11.0</h3>
+    <div id="status">⌛ 엔진 준비 중...</div>
     
     <div class="control-group">
         <h4>1. 규격 설정 (mm)</h4>
@@ -43,46 +43,39 @@
     </div>
 
     <div class="control-group">
-        <h4>2. 몰딩 & 문구 설정</h4>
-        <label>몰딩 타입</label>
-        <select id="molding_type" onchange="draw()">
-            <option value="typeA">갤브형 (상단 80 / 나머지 40)</option>
-            <option value="typeB">일반형 (전체 40)</option>
-        </select>
-        
-        <label style="margin-top:10px;">문구 입력</label>
+        <h4>2. 폰트 & 문구 설정</h4>
+        <label>문구 입력</label>
         <input type="text" id="molding_text" value="G-DESIGN STUDIO" oninput="draw()">
         
-        <label style="margin-top:10px;">폰트 선택</label>
-        <select id="font_family" onchange="changeFont(this.value)">
+        <label style="margin-top:10px;">기본 폰트 선택</label>
+        <select id="font_family" onchange="changePresetFont(this.value)">
             <option value="gothic">Noto Sans (고딕)</option>
             <option value="serif">Noto Serif (명조)</option>
             <option value="brush">Brush (손글씨)</option>
             <option value="mono">Monospace (코딩체)</option>
         </select>
 
+        <label style="margin-top:10px; color:#4A90E2;">✨ 내 컴퓨터 폰트 쓰기</label>
+        <input type="file" id="font_upload" accept=".ttf, .otf" onchange="loadCustomFont(this)" style="font-size:11px; padding:5px;">
+
         <label style="margin-top:10px;">자간 / 크기</label>
         <input type="range" id="letter_spacing" min="-10" max="50" value="0" oninput="draw()">
         <input type="number" id="text_size_pt" value="45" style="margin-top:5px;" oninput="draw()">
+    </div>
 
-        <label style="margin-top:10px;">정렬</label>
-        <div class="align-buttons">
+    <div class="control-group">
+        <h4>3. 정렬 & 색상</h4>
+        <div class="align-buttons" style="margin-bottom:10px;">
             <div class="align-btn active" data-align="left" onclick="changeAlign('left')">좌측</div>
             <div class="align-btn" data-align="center" onclick="changeAlign('center')">중앙</div>
             <div class="align-btn" data-align="right" onclick="changeAlign('right')">우측</div>
         </div>
-    </div>
-
-    <div class="control-group">
-        <h4>3. 색상 선택</h4>
-        <label>몰딩 색상 (4종)</label>
         <div class="color-grid" id="m-colors"></div>
-        <label style="margin-top:10px;">안쪽 배경 색상</label>
-        <div class="color-grid" id="i-colors"></div>
+        <div class="color-grid" id="i-colors" style="margin-top:10px;"></div>
     </div>
 
     <div class="btn-group">
-        <button class="btn btn-blue" onclick="savePNG()">시안 이미지(PNG) 저장</button>
+        <button class="btn btn-blue" onclick="savePNG()">시안(PNG) 저장</button>
         <button class="btn btn-green" id="svg_btn" onclick="saveSVG()" disabled>🔥 커팅용 벡터(SVG) 저장</button>
     </div>
 </div>
@@ -96,12 +89,11 @@
     const ctx = canvas.getContext('2d');
     let curMColor = '#5C7795', curIColor = '#EFEFEF', curAlign = 'left';
     let activeFontData = null;
+    let isCustomFont = false;
 
     const mColors = ['#5C7795', '#A8B0B3', '#91846E', '#594F4B'];
-    const mNames = ['민트', '실버', '골드', '초코'];
     const iColors = ['#FF5733', '#33FF57', '#3357FF', '#F3FF33', '#FF33F3', '#33FFF3', '#A1A1A1', '#4A4A4A', '#EFEFEF', '#D4AF37', '#228B22', '#008080', '#FFDAB9', '#E6E6FA', '#B0E0E6', '#F08080'];
-
-    // 폰트 주소를 더 안정적인 jsDelivr 결합 주소로 변경
+    
     const fontBase = "https://cdn.jsdelivr.net/gh/googlefonts/";
     const fontUrls = {
         gothic: fontBase + "noto-fonts@master/hinted/ttf/NotoSansKR/NotoSansKR-Bold.ttf",
@@ -111,54 +103,52 @@
     };
 
     function init() {
-        // UI 초기화
+        // UI 초기화 (색상칩)
         const mg = document.getElementById('m-colors');
         mColors.forEach((c, i) => {
-            const wrap = document.createElement('div');
-            wrap.style.textAlign = 'center';
-            const d = document.createElement('div');
-            d.className = `color-chip ${i===0?'active':''}`;
-            d.style.backgroundColor = c;
-            d.onclick = (e) => { curMColor = c; updateActive(e.target); draw(); };
-            wrap.appendChild(d);
-            const label = document.createElement('div'); label.innerText = mNames[i]; label.style.fontSize = '10px';
-            wrap.appendChild(label); mg.appendChild(wrap);
+            const d = document.createElement('div'); d.className = `color-chip ${i===0?'active':''}`;
+            d.style.backgroundColor = c; d.onclick = (e) => { curMColor = c; updateActive(e.target); draw(); };
+            mg.appendChild(d);
         });
-
         const ig = document.getElementById('i-colors');
         iColors.forEach(c => {
-            const d = document.createElement('div');
-            d.className = `color-chip ${c==='#EFEFEF'?'active':''}`;
-            d.style.backgroundColor = c;
-            d.onclick = (e) => { curIColor = c; updateActive(e.target, true); draw(); };
+            const d = document.createElement('div'); d.className = `color-chip ${c==='#EFEFEF'?'active':''}`;
+            d.style.backgroundColor = c; d.onclick = (e) => { curIColor = c; updateActive(e.target, true); draw(); };
             ig.appendChild(d);
         });
 
-        changeFont('gothic');
+        changePresetFont('gothic');
     }
 
-    function changeFont(fontKey) {
+    // 1. 서버에서 폰트 가져오기 (공용)
+    function changePresetFont(fontKey) {
+        isCustomFont = false;
         const status = document.getElementById('status');
-        status.innerText = '⌛ 폰트 데이터 로딩 중...';
-        status.style.color = '#e67e22';
-        document.getElementById('svg_btn').disabled = true;
-        document.getElementById('svg_btn').style.opacity = '0.5';
-
-        // opentype.load에 크로스도메인 설정을 명시적으로 시도
-        opentype.load(fontUrls[fontKey], function(err, font) {
-            if (err) {
-                console.error('Font load error:', err);
-                status.innerText = '❌ 로드 실패 (새로고침 해주세요)';
-                status.style.color = '#e74c3c';
-            } else {
+        status.innerText = '⌛ 로딩 중...';
+        opentype.load(fontUrls[fontKey], (err, font) => {
+            if (!err) {
                 activeFontData = font;
-                status.innerText = '✅ 준비 완료 (벡터 저장 가능)';
-                status.style.color = '#27ae60';
+                status.innerText = '✅ 준비 완료';
                 document.getElementById('svg_btn').disabled = false;
-                document.getElementById('svg_btn').style.opacity = '1';
                 draw();
             }
         });
+    }
+
+    // 2. 내 컴퓨터 파일 읽기 (개인용)
+    function loadCustomFont(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                activeFontData = opentype.parse(e.target.result);
+                isCustomFont = true;
+                document.getElementById('status').innerText = `✅ 커스텀: ${file.name}`;
+                draw();
+            } catch (err) { alert("폰트 파일 읽기 실패!"); }
+        };
+        reader.readAsArrayBuffer(file);
     }
 
     function updateActive(t, isInner = false) {
@@ -175,9 +165,8 @@
     }
 
     function draw() {
-        const w_mm = parseFloat(document.getElementById('width_mm').value) || 1;
-        const h_mm = parseFloat(document.getElementById('height_mm').value) || 1;
-        const type = document.getElementById('molding_type').value;
+        const w_mm = parseFloat(document.getElementById('width_mm').value) || 100;
+        const h_mm = parseFloat(document.getElementById('height_mm').value) || 100;
         const text = document.getElementById('molding_text').value;
         const spacing = parseFloat(document.getElementById('letter_spacing').value);
         const fontKey = document.getElementById('font_family').value;
@@ -185,18 +174,21 @@
         const scale = Math.min(700 / w_mm, 500 / h_mm);
         canvas.width = w_mm * scale; canvas.height = h_mm * scale;
 
-        const mTop = (type === 'typeA' ? 80 : 40) * scale;
-        const mSide = 40 * scale;
-
         ctx.fillStyle = curMColor; ctx.fillRect(0,0,canvas.width, canvas.height);
-        ctx.fillStyle = curIColor; ctx.fillRect(mSide, mTop, canvas.width - mSide*2, canvas.height - mTop - mSide);
+        ctx.fillStyle = curIColor; ctx.fillRect(40*scale, 80*scale, canvas.width - 80*scale, canvas.height - 120*scale);
 
-        if(text.trim()) {
+        if(text.trim() && activeFontData) {
             const pt = parseFloat(document.getElementById('text_size_pt').value) || 40;
             const px = pt * 1.33 * scale;
             
-            const previewFonts = { gothic: 'Noto Sans KR', serif: 'Noto Serif KR', brush: 'Nanum Brush Script', mono: 'Nanum Gothic Coding' };
-            ctx.font = `bold ${px}px '${previewFonts[fontKey]}'`;
+            // 프리뷰 폰트 설정
+            if(isCustomFont) {
+                ctx.font = `bold ${px}px sans-serif`; // 커스텀은 시스템 기본 폰트로 대체 (SVG 저장 시엔 커스텀 적용됨)
+            } else {
+                const previewFonts = { gothic: 'Noto Sans KR', serif: 'Noto Serif KR', brush: 'Nanum Brush Script', mono: 'Nanum Gothic Coding' };
+                ctx.font = `bold ${px}px '${previewFonts[fontKey]}'`;
+            }
+            
             ctx.fillStyle = document.getElementById('text_color').value;
             ctx.textBaseline = 'middle';
             ctx.letterSpacing = `${spacing * scale}px`;
@@ -205,16 +197,15 @@
             ctx.shadowOffsetX = 2 * scale; ctx.shadowOffsetY = 2 * scale;
 
             const margin20 = 20 * scale;
-            let x = (curAlign === 'left') ? mSide + margin20 : (curAlign === 'center' ? canvas.width/2 : canvas.width - mSide - margin20);
+            let x = (curAlign === 'left') ? 40*scale + margin20 : (curAlign === 'center' ? canvas.width/2 : canvas.width - 40*scale - margin20);
             ctx.textAlign = curAlign;
-            ctx.fillText(text, x, mTop/2, canvas.width - mSide*2 - margin20*2);
-            ctx.letterSpacing = "0px";
-            ctx.shadowColor = "transparent";
+            ctx.fillText(text, x, 40*scale, canvas.width - 80*scale - 40*scale);
+            ctx.letterSpacing = "0px"; ctx.shadowColor = "transparent";
         }
     }
 
     function savePNG() {
-        const a = document.createElement('a'); a.download = '액자시안.png';
+        const a = document.createElement('a'); a.download = '시안.png';
         a.href = canvas.toDataURL(); a.click();
     }
 
@@ -222,7 +213,6 @@
         if(!activeFontData) return;
         const text = document.getElementById('molding_text').value;
         const w = parseFloat(document.getElementById('width_mm').value);
-        const moldingH = (document.getElementById('molding_type').value === 'typeA' ? 80 : 40);
         const pt = parseFloat(document.getElementById('text_size_pt').value);
         const spacing = parseFloat(document.getElementById('letter_spacing').value);
 
@@ -236,18 +226,17 @@
         else if (curAlign === 'center') xPos = (w/2) - (textW/2) - bbox.x1;
         else xPos = (w - 40 - margin20) - textW - bbox.x1;
 
-        const yPos = (moldingH / 2) + ((bbox.y2 - bbox.y1)/4);
+        const yPos = 40 + ((bbox.y2 - bbox.y1)/4);
         const finalPathData = activeFontData.getPath(text, xPos, yPos, pt, { letterSpacing: spacing / 10 }).toPathData();
 
         const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${moldingH}mm" viewBox="0 0 ${w} ${moldingH}">
-    <rect x="0" y="0" width="${w}" height="${moldingH}" fill="none" stroke="red" stroke-width="0.1" />
+<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="80mm" viewBox="0 0 ${w} 80">
+    <rect x="0" y="0" width="${w}" height="80" fill="none" stroke="red" stroke-width="0.1" />
     <path d="${finalPathData}" fill="none" stroke="black" stroke-width="0.2" />
 </svg>`.trim();
 
-        const b = new Blob([svg], {type: 'image/svg+xml'});
-        const url = URL.createObjectURL(b);
-        const a = document.createElement('a'); a.href = url; a.download = `커팅용_${text}.svg`; a.click();
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([svg], {type: 'image/svg+xml'}));
+        a.download = `커팅용_${text}.svg`; a.click();
     }
 
     init();
